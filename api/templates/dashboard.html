@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}HookRelay — Delivery Dashboard{% endblock %}
+
+{% block content %}
+<h1>Delivery dashboard</h1>
+<div class="sub"><span id="count"></span></div>
+
+<div class="cards" id="cards"></div>
+
+<div class="toolbar">
+  <button id="reload">Reload</button>
+  <span class="auto"><span class="dot"></span>auto-refreshing every 5s</span>
+</div>
+
+<div class="panel tight">
+  <table>
+    <thead>
+      <tr>
+        <th>Status</th>
+        <th>Event</th>
+        <th>Endpoint</th>
+        <th>Attempts</th>
+        <th>Last code</th>
+        <th>Last error</th>
+        <th>Created (UTC)</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="empty" id="empty" hidden>No deliveries match this filter.</div>
+</div>
+
+<script>
+const REFRESH_MS = 5000;
+const LIMIT = 100;
+let filter = null;          // null = show everything
+let inFlight = false;       // stops overlapping polls from racing
+
+const $ = (id) => document.getElementById(id);
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+function shortTime(iso) {
+  if (!iso) return "-";
+  return iso.replace("T", " ").replace("+00:00", "").slice(0, 19);
+}
+
+async function loadStats() {
+  const stats = await (await fetch("/deliveries/stats")).json();
+  const order = ["dead", "retrying", "in_flight", "pending", "succeeded", "total"];
+  $("cards").innerHTML = order.map(k => `
+    <div class="card ${filter === k ? "active" : ""}" data-k="${k}">
+      <div class="n">${stats[k] ?? 0}</div>
+      <div class="k">${k}</div>
+    </div>
+  `).join("");
+  $("count").textContent = `${stats.total ?? 0} deliveries tracked`;
+}
+
+async function loadRows() {
+  const q = filter && filter !== "total"
+    ? `?status=${encodeURIComponent(filter)}&limit=${LIMIT}`
+    : `?limit=${LIMIT}`;
+  const data = await (await fetch("/deliveries" + q)).json();
+
+  $("rows").innerHTML = data.deliveries.map(d => `
+    <tr>
+      <td><span class="pill s-${esc(d.status)}">${esc(d.status)}</span></td>
+      <td><code>${esc(d.event_type)}</code></td>
+      <td class="mono">${esc(d.endpoint_url)}</td>
+      <td>${esc(d.attempt_count)}</td>
+      <td>${esc(d.last_status_code ?? "-")}</td>
+      <td class="err">${esc(d.last_error ?? "-")}</td>
+      <td class="mono">${esc(shortTime(d.created_at))}</td>
+      <td>${d.status === "dead"
+        ? `<button data-id="${esc(d.id)}">Replay</button>`
+        : ""}</td>
+    </tr>
+  `).join("");
+
+  $("empty").hidden = data.deliveries.length > 0;
+}
+
+async function refresh() {
+  if (inFlight) return;
+  inFlight = true;
+  try {
+    await loadStats();
+    await loadRows();
+  } catch (e) {
+    $("empty").hidden = false;
+    $("empty").textContent = "Failed to reach the API: " + e;
+  } finally {
+    inFlight = false;
+  }
+}
+
+async function replay(id, btn) {
+  btn.disabled = true;
+  btn.textContent = "Replaying...";
+  try {
+    const res = await fetch(`/deliveries/${id}/replay`, { method: "POST" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || res.status);
+    }
+    await refresh();
+  } catch (e) {
+    alert("Replay failed: " + e.message);
+    btn.disabled = false;
+    btn.textContent = "Replay";
+  }
+}
+
+$("cards").addEventListener("click", (ev) => {
+  const card = ev.target.closest(".card");
+  if (!card) return;
+  filter = card.dataset.k;
+  refresh();
+});
+
+$("rows").addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button[data-id]");
+  if (btn) replay(btn.dataset.id, btn);
+});
+
+$("reload").addEventListener("click", refresh);
+
+refresh();
+setInterval(refresh, REFRESH_MS);
+</script>
+{% endblock %}

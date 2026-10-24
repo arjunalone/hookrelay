@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}HookRelay — Home{% endblock %}
+
+{% block content %}
+<h1>HookRelay</h1>
+<div class="sub">Reliable webhook delivery — publishers send events, workers deliver them with retries, backoff and dead-lettering.</div>
+
+<div class="cards" id="cards"></div>
+
+<div class="panel">
+  <h2>Send a test event</h2>
+  <div class="banner info">
+    This form does what <code>curl -X POST /events</code> does. The same endpoint is
+    also available on the <a href="/events">/events page</a>.
+  </div>
+
+  <label for="event_type">Event type</label>
+  <input type="text" id="event_type" value="order.created">
+
+  <div class="row">
+    <div>
+      <label for="idem">Idempotency key</label>
+      <input type="text" id="idem">
+    </div>
+    <div style="flex:0 0 auto; display:flex; align-items:flex-end;">
+      <button class="ghost" id="newkey" type="button">New key</button>
+    </div>
+  </div>
+
+  <label for="payload">Payload (JSON)</label>
+  <textarea id="payload">{"order_id": 42, "total": 99.50}</textarea>
+
+  <div style="margin-top:14px; display:flex; gap:10px; align-items:center;">
+    <button id="send" type="button">Publish event</button>
+    <span class="auto" id="hint">Delivered in the background by a worker — check the <a href="/dashboard">dashboard</a>.</span>
+  </div>
+
+  <div id="out"></div>
+</div>
+
+<div class="panel">
+  <h2>Registered endpoints</h2>
+  <div class="panel tight" style="border:0;">
+    <table>
+      <thead><tr><th>Event type</th><th>URL</th></tr></thead>
+      <tbody id="eps"></tbody>
+    </table>
+    <div class="empty" id="eps-empty" hidden>No endpoints registered yet.</div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>API reference</h2>
+  <ul class="routes">
+    <li><code>GET&nbsp;&nbsp;/health</code> <span class="m">— liveness + database check</span></li>
+    <li><code>POST /endpoints</code> <span class="m">— register a subscriber URL (US-1.1)</span></li>
+    <li><code>GET&nbsp;&nbsp;/endpoints</code> <span class="m">— list subscribers</span></li>
+    <li><code>POST /events</code> <span class="m">— publish an event, returns 202 + fans out (US-1.2)</span></li>
+    <li><code>GET&nbsp;&nbsp;/deliveries?status=dead&amp;limit=&amp;offset=</code> <span class="m">— filterable delivery log (US-3.1)</span></li>
+    <li><code>GET&nbsp;&nbsp;/deliveries/stats</code> <span class="m">— per-status counts</span></li>
+    <li><code>POST /deliveries/&lt;id&gt;/replay</code> <span class="m">— re-queue a dead delivery (US-3.2)</span></li>
+  </ul>
+  <div class="sub" style="margin:14px 0 0;">
+    <code>POST /events</code> and <code>POST /endpoints</code> are POST-only by design — they are
+    publisher actions, not browsable pages. Opening them with GET returns <code>405 Method Not Allowed</code>.
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+function newKey() {
+  // crypto.randomUUID is available on localhost (a secure context).
+  const rand = (self.crypto && crypto.randomUUID)
+    ? crypto.randomUUID().slice(0, 8)
+    : Math.random().toString(36).slice(2, 10);
+  $("idem").value = "key-" + rand;
+}
+
+async function loadStats() {
+  try {
+    const stats = await (await fetch("/deliveries/stats")).json();
+    const order = ["total", "succeeded", "retrying", "dead", "pending", "in_flight"];
+    $("cards").innerHTML = order.map(k => `
+      <div class="card"><div class="n">${stats[k] ?? 0}</div><div class="k">${k}</div></div>
+    `).join("");
+  } catch (e) { /* stats are decorative here */ }
+}
+
+async function loadEndpoints() {
+  try {
+    const eps = await (await fetch("/endpoints")).json();
+    $("eps").innerHTML = eps.map(e => `
+      <tr><td><code>${esc(e.event_type)}</code></td><td class="mono">${esc(e.url)}</td></tr>
+    `).join("");
+    $("eps-empty").hidden = eps.length > 0;
+  } catch (e) { /* ignore */ }
+}
+
+function show(status, body) {
+  const color = status === 202 ? "var(--ok)" : status === 409 ? "var(--warn)" : "var(--dead)";
+  $("out").innerHTML = `
+    <label>Response — <span style="color:${color}">HTTP ${esc(status)}</span></label>
+    <pre>${esc(JSON.stringify(body, null, 2))}</pre>`;
+}
+
+async function send() {
+  const btn = $("send");
+  let payload;
+  try {
+    payload = JSON.parse($("payload").value);
+  } catch (e) {
+    show("invalid", { error: "Payload is not valid JSON: " + e.message });
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "Publishing...";
+  try {
+    const res = await fetch("/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event_type: $("event_type").value,
+        payload: payload,
+        idempotency_key: $("idem").value,
+      }),
+    });
+    show(res.status, await res.json().catch(() => ({})));
+    if (res.status === 202) newKey();   // fresh key, so the next send isn't a 409
+    setTimeout(() => { loadStats(); loadEndpoints(); }, 1500);
+  } catch (e) {
+    show("failed", { error: String(e) });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Publish event";
+  }
+}
+
+$("send").addEventListener("click", send);
+$("newkey").addEventListener("click", newKey);
+
+newKey();
+loadStats();
+loadEndpoints();
+setInterval(loadStats, 5000);
+</script>
+{% endblock %}

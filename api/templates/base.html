@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}HookRelay{% endblock %}</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #171a23;
+    --border: #262b38;
+    --text: #e6e8ee;
+    --muted: #8b93a7;
+    --accent: #5b8cff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --dead: #f85149;
+    --busy: #a371f7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .topbar {
+    display: flex; align-items: center; gap: 22px;
+    padding: 14px 24px; border-bottom: 1px solid var(--border); background: #12141c;
+  }
+  .brand { font-weight: 600; font-size: 16px; color: var(--text); }
+  .topbar nav { display: flex; gap: 16px; font-size: 14px; }
+  main { padding: 24px; max-width: 1100px; }
+
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 18px; margin-bottom: 18px;
+  }
+  .panel.tight { padding: 0; overflow-x: auto; }
+
+  .cards { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 16px; min-width: 104px; cursor: pointer;
+    transition: border-color .12s;
+  }
+  .card:hover { border-color: var(--accent); }
+  .card.active { border-color: var(--accent); background: #1c2130; }
+  .card .n { font-size: 22px; font-weight: 600; }
+  .card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #1b1f2a; }
+  code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  pre {
+    background: #0c0e14; border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px; overflow-x: auto; margin: 0;
+  }
+  .err { color: var(--dead); max-width: 340px; word-break: break-word; }
+
+  .pill { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .s-succeeded { background: rgba(63,185,80,.15); color: var(--ok); }
+  .s-dead      { background: rgba(248,81,73,.15); color: var(--dead); }
+  .s-retrying  { background: rgba(210,153,34,.15); color: var(--warn); }
+  .s-pending   { background: rgba(139,147,167,.15); color: var(--muted); }
+  .s-in_flight { background: rgba(163,113,247,.15); color: var(--busy); }
+
+  button, .btn {
+    background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+    padding: 7px 14px; font-size: 13px; font-weight: 500; cursor: pointer;
+    font-family: inherit; display: inline-block;
+  }
+  button:hover, .btn:hover { filter: brightness(1.12); text-decoration: none; }
+  button:disabled { opacity: .5; cursor: wait; }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  button.ghost:hover { border-color: var(--accent); filter: none; }
+
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 5px; text-transform: uppercase; letter-spacing: .4px; }
+  input[type=text], textarea, select {
+    width: 100%; background: #0c0e14; color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+  }
+  input[type=text]:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 80px; }
+
+  .empty { padding: 28px; text-align: center; color: var(--muted); }
+  .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .auto { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); margin-right: 5px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 220px; }
+  .routes li { margin-bottom: 6px; }
+  .routes code { color: var(--ok); }
+  .routes .m { color: var(--muted); }
+  #out { margin-top: 14px; }
+  .banner { padding: 10px 12px; border-radius: 6px; margin-bottom: 14px; font-size: 13px; }
+  .banner.info { background: rgba(91,140,255,.12); border: 1px solid rgba(91,140,255,.3); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="brand" href="/">HookRelay</a>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/dashboard">Dashboard</a>
+  </nav>
+</div>
+
+<main>
+{% block content %}{% endblock %}
+</main>
+
+</body>
+</html>

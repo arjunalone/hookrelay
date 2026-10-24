@@ -1,0 +1,5 @@
+# Dev/test-only dependencies. Kept out of requirements.txt and the Docker
+# images so production installs and image builds stay lean.
+-r requirements.txt
+
+pytest>=8.0

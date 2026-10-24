@@ -1,0 +1,45 @@
+Epics → User Stories (in build order)
+Epic 1: Event Ingestion (→ Milestone 2)
+US-1.1: As a Publisher, I want to register an endpoint URL so HookRelay knows where to deliver events.
+US-1.2: As a Publisher, I want to send an event via POST /events and get an immediate acknowledgment, so my system isn't blocked waiting for delivery.
+US-1.3: As a Publisher, I want to send the same event twice safely (idempotency key) so network retries on my side don't cause duplicate processing.
+
+********************************************************************************************************************************
+Epic 2: Reliable Delivery (→ Milestone 3–5)
+US-2.1: As a Subscriber, I want to receive events shortly after they're published, so my system stays in sync.
+US-2.2: As the System, I want failed deliveries to retry with backoff, so temporary outages don't cause permanent data loss.
+US-2.3: As the System, I want to detect and recover a worker that crashed mid-delivery, so no event silently disappears.
+US-2.4: As a Subscriber, I want to verify a delivery genuinely came from HookRelay (HMAC signature), so I don't process forged requests.
+
+*******************************************************************************************************
+Epic 3: Failure Visibility (→ Milestone 5)
+US-3.1: As a Developer, I want to see failed/dead deliveries in a dashboard, so I know what needs attention.
+US-3.2: As a Developer, I want to replay a dead delivery after fixing my endpoint, so I don't lose that event permanently.
+US-3.3: As the System, I want to pause (circuit-break) a repeatedly failing endpoint, so it doesn't waste worker capacity.
+
+************************************************************************
+Epic 4: Operations (→ Milestone 6)
+US-4.1: As a Developer, I want everything running in Docker, so I can deploy identically anywhere.
+US-4.2: As a Developer, I want the app live on a public URL, so I can demo it in interviews.
+US-4.3: As a Developer, I want metrics (queue depth, success rate) visible, so I can prove reliability with numbers.
+What's immediately next: Milestone 2 = Epic 1 (US-1.1, US-1.2, US-1.3)
+
+Concretely, in order:
+
+Step	Deliverable	Story it satisfies
+2a	Event and Delivery models in shared/models.py	Foundation for 1.2
+2b	Minimal Flask app (api/app.py) that boots and connects to DB	Foundation
+2c	POST /endpoints route — register a receiver URL	US-1.1
+2d	POST /events route — save event + create delivery rows + return 202	US-1.2
+2e	Idempotency key check on POST /events	US-1.3
+2f	Test with curl, verify rows in Postgres via psql (same pattern as Milestone 1)	Proof
+
+*********************************************************************************************
+Now, Milestone 3: the worker
+
+This is the piece that reads pending deliveries and actually sends the HTTP request. We'll build it in the same small-step way:
+
+3a: A worker script with a loop — no locking yet, just prove it can read a pending delivery and send a POST
+3b: Add real HTTP delivery + mark succeeded/retrying based on response
+3c: Add FOR UPDATE SKIP LOCKED claiming + leases (the crash-safety piece)
+3d: Add exponential backoff for retries

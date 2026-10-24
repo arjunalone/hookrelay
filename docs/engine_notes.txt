@@ -1,0 +1,14 @@
+engine--engine
+
+Think of engine as the road connecting Python to Postgres. It knows:
+
+the address (DATABASE_URL — host, port, username, password, database name)
+how to speak Postgres's language (via the psycopg2 driver)
+how to manage a pool of actual network connections underneath, so you're not opening a brand new connection every single time
+**Simple analogy
+engine = the phone line installed to the restaurant (set up once)
+SessionLocal = the "call the restaurant" button
+session = get_session() = one actual phone call — you order, you pay, you hang up
+Every time you need to talk to the restaurant again, you press the button again for a new call, you don't reuse yesterday's call**
+*********************************************************************************
+uuid-a1b2c3d4-e5f6-47a8-9b2c-1234567890ab  //for unique ness and hide data from hackers

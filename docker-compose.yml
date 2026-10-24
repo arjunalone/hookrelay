@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16
+    container_name: hookrelay_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hookrelay
+      POSTGRES_PASSWORD: hookrelay_dev_password
+      POSTGRES_DB: hookrelay
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hookrelay"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: hookrelay_api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://hookrelay:hookrelay_dev_password@db:5432/hookrelay
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    container_name: hookrelay_worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://hookrelay:hookrelay_dev_password@db:5432/hookrelay
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+volumes:
+  pgdata:
